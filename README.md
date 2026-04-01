@@ -1,70 +1,47 @@
-# PawPal+ (Module 2 Project)
+# PawPal+
 
-**PawPal+** is a small Python backend plus a Streamlit shell that helps a pet owner plan care tasks (walks, feeding, meds, enrichment) under time and priority constraints.
+**PawPal+** is a pet-care planning assistant: a Python domain model plus a Streamlit UI that helps an owner track tasks per pet and build a **non-overlapping daily schedule** from priorities, preferred times, due dates, and recurring rules.
 
-## Scenario
+---
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+## Features
 
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
+These capabilities map directly to the algorithms and data structures in `pawpal_system.py` and the wiring in `app.py`:
 
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+| Feature | What it does |
+|--------|----------------|
+| **Urgency scoring** | Each open task gets a numeric score from `Task.giveUrgencyScore()` (priority scaled by 10 plus a small **frequency** bonus: daily > weekly > as_needed). Completed tasks score zero so they drop out of scheduling order. |
+| **Sorting by preferred time** | `sort_pairs_by_preferred_time()` orders tasks with a **preferred start** (`time_minutes` from midnight) before those without; within each group, sorts by time, then pet name and description for stable ties. |
+| **Sorting by urgency** | `sort_pairs_by_urgency()` orders by descending urgency and priority so the UI and previews match scheduler intent. When the task list is filtered to **open only**, the app can align order with `Scheduler.sortTasksByPriority()`. |
+| **Scheduler ordering** | `sortTasksByPriority()` considers only **incomplete** tasks that are **due on** the chosen `reference_date`, optionally filtered to a **calendar weekday** so weekly tasks appear only on their day. Tasks are sorted by urgency then priority (descending). |
+| **Greedy day packing** | `generateOptimizedSchedule()` walks tasks in that order. For each task it tries the **preferred** slot if the full block (duration + buffer) fits in the day window and does not overlap already placed blocks; otherwise it uses **first-fit** via `findAvailableSlot()` over merged gaps in `[day_start, day_end)`. |
+| **Time buffers** | `getRequiredTimeBuffer()` adds slack around each block; `total_block_minutes()` includes buffer for conflict checks and placement. |
+| **Conflict warnings (preferences)** | `detect_preferred_time_conflicts()` compares **half-open** minute intervals `[start, end)` for all open tasks with a preferred time and reports overlaps (touching endpoints do not count). The Streamlit app surfaces these as readable lines. |
+| **Conflict warnings (plan)** | After building a concrete plan, `detect_plan_conflicts()` / `plan_conflict_warnings()` validate assigned starts the same way—useful if the plan is edited or inspected. |
+| **Due date gating** | Tasks with a `due_date` are only eligible when `due_date <= reference_date`, so future-dated work stays off today’s plan until appropriate. |
+| **Weekly recurrence** | For `frequency="weekly"`, optional `weekly_weekday` (Monday–Sunday) restricts which day a task is considered; pairs with `Scheduler` weekday filtering. |
+| **Daily / weekly completion** | `mark_complete()` on a pet’s task list replaces **daily** or **weekly** rows with a **new open task** for the next due day (`+1` or `+7` days); other frequencies simply mark complete. |
+| **Owner-level views** | `Owner.get_all_tasks()`, `iter_tasks_with_pet()`, and `filter_tasks()` (by status and pet name) support flat lists and the Streamlit filters. |
 
-## What you will build
+---
 
-Your final app should:
+## 📸 Demo
 
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+Click the image to open the full-size screenshot in a new tab.
 
-## Project layout
+<a href="/course_images/ai110/your_screenshot_name.png" target="_blank"><img src='/course_images/ai110/your_screenshot_name.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
 
-| Path | Purpose |
-|------|---------|
-| `pawpal_system.py` | Domain model (`Task`, `Pet`, `Owner`) and `Scheduler` (priority sort + day packing) |
-| `main.py` | CLI demo: sample pets/tasks, prints an optimized schedule |
-| `app.py` | Streamlit UI starter (wire your scheduler here when ready) |
-| `tests/` | `pytest` tests for core behaviors |
-| `uml.mmd` | UML source (Mermaid) |
+---
 
-## Backend overview
-
-- **`Task`** — Care item: description, optional preferred time (`time_minutes` from midnight), frequency, duration, priority, and `completed`. Urgency scoring drives ordering; `mark_complete()` sets done.
-- **`Pet`** — Name, species, age, and a list of `Task` instances. Species/age inform recommended care hints and health notes.
-- **`Owner`** — Holds `Pet` list; exposes flat views of all tasks (with or without pet pairing).
-- **`Scheduler`** — Given an `Owner`, considers only incomplete tasks, sorts by urgency/priority, then assigns non-overlapping start times within a day window (default 07:00–22:00), respecting preferred times when they fit.
-
-## Smarter Scheduling
-
-PawPal+ goes beyond a simple priority list:
-
-- **Due dates** — Each task can carry a calendar `due_date`. The scheduler only considers tasks that are due on the chosen planning day (`reference_date`), so future occurrences stay off today’s plan until appropriate.
-- **Weekly rules** — For `frequency="weekly"`, optional `weekly_weekday` (Monday–Sunday) limits which calendar day a task appears on, so weekly meds or grooming only show when they apply.
-- **Preferred times and conflicts** — Preferred start (`time_minutes`) is honored when it fits the day window and does not overlap another placed block; otherwise the scheduler **first-fits** the task into the next gap. You can detect overlapping *preferences* across open tasks with `detect_preferred_time_conflicts` / `Scheduler.preferred_time_conflict_warnings`, and validate any concrete plan with `detect_plan_conflicts` / `plan_conflict_warnings`.
-- **Recurring completion** — Completing a **daily** or **weekly** task that lives on a pet’s list replaces that row with a new open task for the next due day (`today + 1 day` or `today + 7 days`), so the model stays aligned with recurring care.
-
-## Getting started
+## Quick start
 
 ### Setup
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
-
-### Run the CLI demo
-
-```bash
-python main.py
-```
-
-Prints a sorted daily plan for the sample pets defined in `main.py`.
 
 ### Run the Streamlit app
 
@@ -72,23 +49,49 @@ Prints a sorted daily plan for the sample pets defined in `main.py`.
 streamlit run app.py
 ```
 
+Add pets and tasks, filter and sort the task table, review **preferred-time** warnings, then **Generate schedule** for a packed day plan (default window 07:00–22:00).
+
+### Run the CLI sample
+
+```bash
+python main.py
+```
+
+Prints an optimized schedule for the sample data in `main.py`.
+
 ### Run tests
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-## Testing PawPal+
+---
 
-Run the automated checks from the project root:
+## Project layout
 
-```bash
-python -m pytest
-```
+| Path | Purpose |
+|------|---------|
+| `pawpal_system.py` | `Task`, `Pet`, `Owner`, `Scheduler`, `TimeRangeConflict`, and module helpers (sorting, conflict detection, filtering). |
+| `app.py` | Streamlit UI: session state, task CRUD, filters, conflict warnings, schedule generation. |
+| `main.py` | CLI demo with sample pets and tasks. |
+| `tests/test_pawpal.py` | `pytest` coverage for scheduling, recurrence, conflicts, and edge cases. |
+| `uml.mmd` / `uml_final.mmd` | Mermaid UML; `uml_final.png` is an exported diagram. |
 
-Use `python -m pytest tests/ -v` for verbose per-test output.
+---
 
-The suite in `tests/test_pawpal.py` exercises core backend behavior: task completion and **daily/weekly recurrence** (including `as_needed`), **owner filtering** by pet name and status, **preferred-time sorting** (chronological order and tie-breaks), **urgency sorting**, **weekday** and **due_date** gating for the scheduler, **preferred-time and plan conflict** detection (including duplicate preferred starts and half-open “touching” intervals), **optimized schedule** generation (preferred slots, first-fit fallback, day-budget skips), and **helper** utilities such as conflict warning strings and `findAvailableSlot` with unsorted occupied intervals.
+## Architecture notes
 
-**Confidence level (reliability, based on current tests):** ★★★★☆ (4/5) — domain and scheduling logic are well covered by `pytest`, but the Streamlit UI and end-to-end flows are not exercised here; add integration or UI tests to raise confidence further.
+- **`Task`** — Care item: description, optional preferred time, frequency, duration, priority, completion, optional weekly weekday and due date.
+- **`Pet`** — Holds a list of `Task` instances; species/age drive care hints and health notes.
+- **`Owner`** — Aggregates pets; exposes flattened task views and filtering.
+- **`Scheduler`** — Holds an `Owner`; filters eligible tasks, sorts by urgency/priority, assigns non-overlapping times in a configurable day window.
 
+For deeper behavior (tradeoffs, non-optimal greedy packing), see `reflection.md`.
+
+---
+
+## Testing and confidence
+
+The suite in `tests/test_pawpal.py` exercises completion and **daily/weekly/as_needed** behavior, **owner filtering**, **preferred-time** and **urgency** sorting, **weekday** and **due_date** gating, **preferred-time and plan** conflict detection, **optimized schedule** generation, and utilities such as warning strings and `findAvailableSlot`.
+
+**Reliability (based on current tests):** strong coverage for domain and scheduling logic; the Streamlit layer is not automated here—add integration or UI tests to raise end-to-end confidence further.

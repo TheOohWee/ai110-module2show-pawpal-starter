@@ -9,8 +9,6 @@ from pawpal_system import (
     Scheduler,
     Task,
     TaskStatusFilter,
-    detect_plan_conflicts,
-    detect_preferred_time_conflicts,
     filter_tasks_with_pets,
     sort_pairs_by_preferred_time,
     sort_pairs_by_urgency,
@@ -190,28 +188,51 @@ else:
     _pairs = filter_tasks_with_pets(
         owner, pet=_pet_filter, status=cast(TaskStatusFilter, filter_status)
     )
+    _pairs_for_order = list(_pairs)
+    _scheduler = Scheduler(owner=owner)
+    _ref_today = date.today()
+
     if sort_mode == "preferred_time":
         _pairs = sort_pairs_by_preferred_time(_pairs)
     elif sort_mode == "urgency":
-        _pairs = sort_pairs_by_urgency(_pairs)
+        if filter_status == "open":
+            _sched_ordered = _scheduler.sortTasksByPriority(reference_date=_ref_today)
+            _pairs = [
+                (p, t)
+                for p, t in _sched_ordered
+                if (p, t) in _pairs_for_order
+            ]
+        else:
+            _pairs = sort_pairs_by_urgency(_pairs)
     else:
         _pairs = sorted(_pairs, key=lambda pt: pt[1].description.lower())
 
-    _pref_conflicts = detect_preferred_time_conflicts(owner)
-    if _pref_conflicts:
+    _pref_warnings = _scheduler.preferred_time_conflict_warnings()
+    if _pref_warnings:
         st.warning(
-            f"**Preferred time conflicts** ({len(_pref_conflicts)}): overlapping windows among tasks with a preferred start."
+            "**Overlapping preferred times** — Two or more open tasks want the same part of the day. "
+            "Adjust preferred times or durations so blocks do not overlap, or rely on **Generate schedule** "
+            "to place one task at a different time."
         )
-        for c in _pref_conflicts:
-            st.markdown(
-                f"- **{c.pet_a}** — {c.task_a} ({_clock(c.start_a)}–{_clock(c.end_a)}) "
-                f"vs **{c.pet_b}** — {c.task_b} ({_clock(c.start_b)}–{_clock(c.end_b)})"
-            )
+        with st.container():
+            st.markdown("**What overlaps**")
+            for line in _pref_warnings:
+                st.markdown(f"- {line}")
+    else:
+        st.success(
+            "Preferred times look clear: no overlapping windows among open tasks with a preferred start."
+        )
 
     if not _pairs:
         st.caption("No tasks match the current filters.")
     else:
         _day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        _sort_label = {
+            "preferred_time": "Preferred start time (chronological)",
+            "urgency": "Scheduler urgency / priority (Status 'Open only' uses Scheduler.sortTasksByPriority)",
+            "description": "Description (A–Z)",
+        }[sort_mode]
+        st.caption(f"Showing **{len(_pairs)}** row(s) · {_sort_label}")
         st.table(
             [
                 {
@@ -279,14 +300,15 @@ if st.button("Generate schedule"):
             weekday=_sched_weekday, reference_date=date.today()
         )
         plan.sort(key=lambda row: row[2])
-        _plan_conflicts = detect_plan_conflicts(plan)
-        if _plan_conflicts:
-            st.error(
-                "Unexpected **schedule overlaps** (report if you see this after generation): "
-                + "; ".join(
-                    f"{c.pet_a}/{c.task_a} vs {c.pet_b}/{c.task_b}" for c in _plan_conflicts
-                )
+        _plan_warn = scheduler.plan_conflict_warnings(plan)
+        if _plan_warn:
+            st.warning(
+                "**Assigned times overlap** — The generated plan has two blocks at the same time. "
+                "This should be rare; note which tasks clash and adjust priorities, durations, or preferred times."
             )
+            st.markdown("**Overlaps**")
+            for line in _plan_warn:
+                st.markdown(f"- {line}")
         if not plan:
             st.info("No tasks fit in the day window, all tasks are complete, or none apply on this weekday.")
         else:
@@ -302,5 +324,10 @@ if st.button("Generate schedule"):
                         "task": task.description,
                     }
                 )
-            st.success("Schedule generated.")
+            if not _plan_warn:
+                st.success(
+                    "Day plan generated with no overlapping assigned slots (07:00–22:00 window, includes buffers)."
+                )
+            else:
+                st.info("Plan below is still shown in time order; resolve overlaps using the list above.")
             st.table(rows)

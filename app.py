@@ -82,51 +82,26 @@ def _save_owner_to_disk(owner: Owner) -> None:
     _DATA_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _clock(minutes: int) -> str:
+    h, m = divmod(minutes, 60)
+    return f"{h:02d}:{m:02d}"
+
+
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
-st.title("🐾 PawPal+")
-
-st.markdown(
-    """
-Welcome to the PawPal+ starter app.
-
-The sections below use your **Phase 2** classes: `Owner` in `st.session_state`, `Pet` / `Task`
-on the model, and `Scheduler.generateOptimizedSchedule()` for the day plan.
-"""
-)
-
-with st.expander("Scenario", expanded=True):
-    st.markdown(
-        """
-**PawPal+** is a pet care planning assistant. It helps a pet owner plan care tasks
-for their pet(s) based on constraints like time, priority, and preferences.
-
-You will design and implement the scheduling logic and connect it to this Streamlit UI.
-"""
-    )
-
-
-st.divider()
+st.title("PawPal+")
+st.caption("Pet care tasks and a daily schedule. Data is stored locally next to this app.")
 
 if "owner" not in st.session_state:
     st.session_state.owner = _load_owner_from_disk()
 
 owner = st.session_state.owner
 
-st.caption(f"Data is saved to **`{_DATA_FILE.name}`** in the project folder (reload-safe). Delete that file to reset.")
-
-
-def _clock(minutes: int) -> str:
-    h, m = divmod(minutes, 60)
-    return f"{h:02d}:{m:02d}"
-
-
-st.subheader("Add a pet")
-st.caption("Appends a `Pet` to `Owner.pets` (same structure as `main.py`).")
+st.subheader("Pets")
 
 pc1, pc2, pc3 = st.columns(3)
 with pc1:
-    pet_name = st.text_input("Pet name", value="Mochi")
+    pet_name = st.text_input("Name", value="Mochi")
 with pc2:
     species = st.selectbox("Species", ["dog", "cat", "other"], key="add_pet_species")
 with pc3:
@@ -136,28 +111,24 @@ if st.button("Add pet", key="add_pet_btn"):
     name = (pet_name or "").strip() or "Unnamed"
     owner.pets.append(Pet(name=name, species=species, age=int(age)))
     _save_owner_to_disk(owner)
-    st.success(f"Added **{name}**.")
+    st.success(f"Added {name}.")
     st.rerun()
 
 if owner.pets:
-    st.markdown("**Your pets**")
     for p in owner.pets:
-        st.markdown(f"- **{p.name}** ({p.species}, age {p.age}) — {len(p.tasks)} task(s)")
+        st.markdown(f"**{p.name}** · {p.species} · age {p.age} · {len(p.tasks)} task(s)")
 else:
-    st.info("No pets yet. Add one above.")
+    st.info("Add a pet to get started.")
 
 st.divider()
 
-st.subheader("Add a task")
-st.caption("Appends a `Task` to the chosen pet (`Pet.tasks`), using urgency, buffers, and optional preferred time in the scheduler.")
+st.subheader("Tasks")
 
 if not owner.pets:
-    st.warning("Add at least one pet before adding tasks.")
+    st.warning("Add a pet first.")
 else:
-    # Use index, not Pet objects: Streamlit may not preserve object identity for
-    # selectbox options across reruns, so we must mutate `owner.pets[i]` directly.
     _add_pet_idx = st.selectbox(
-        "Pet for this task",
+        "Pet",
         options=list(range(len(owner.pets))),
         format_func=lambda i: f"{owner.pets[i].name} ({owner.pets[i].species})",
         key="add_task_pet_idx",
@@ -166,7 +137,7 @@ else:
 
     tc1, tc2 = st.columns(2)
     with tc1:
-        description = st.text_input("Task description", value="Morning walk")
+        description = st.text_input("Description", value="Morning walk")
     with tc2:
         frequency = st.selectbox("Frequency", ["daily", "weekly", "as_needed"])
 
@@ -199,10 +170,10 @@ else:
         priority_label = st.selectbox("Priority", ["low", "medium", "high"], index=2)
         _priority_value = {"low": 1, "medium": 2, "high": 3}[priority_label]
 
-    use_pref = st.checkbox("Preferred start time (minutes from midnight, for scheduling)")
+    use_pref = st.checkbox("Preferred start time")
     pref_minutes: int | None = None
     if use_pref:
-        pref_time = st.time_input("Preferred start", value=time(8, 0))
+        pref_time = st.time_input("Start time", value=time(8, 0))
         pref_minutes = pref_time.hour * 60 + pref_time.minute
 
     if st.button("Add task", key="add_task_btn"):
@@ -219,10 +190,10 @@ else:
             )
         )
         _save_owner_to_disk(owner)
-        st.success(f"Task added for **{pet_for_task.name}**.")
+        st.success("Task added.")
         st.rerun()
 
-    st.markdown("#### Task list (filter & sort)")
+    st.markdown("#### Task list")
     _f1, _f2, _f3 = st.columns(3)
     with _f1:
         filter_pet_opt = st.selectbox(
@@ -243,7 +214,7 @@ else:
             ["preferred_time", "urgency", "description"],
             format_func=lambda x: {
                 "preferred_time": "Preferred time",
-                "urgency": "Urgency (priority)",
+                "urgency": "Urgency",
                 "description": "Description (A–Z)",
             }[x],
             key="task_sort_mode",
@@ -265,7 +236,6 @@ else:
     elif sort_mode == "urgency":
         if filter_status == "open":
             _sched_ordered = _scheduler.sortTasksByPriority(reference_date=_ref_today)
-            # Intersect using object identity (dataclass `in list` can match wrong rows).
             _allowed_pairs = {(id(p), id(t)) for p, t in _pairs_for_order}
             _pairs = [
                 (p, t)
@@ -279,30 +249,22 @@ else:
 
     _pref_warnings = _scheduler.preferred_time_conflict_warnings()
     if _pref_warnings:
-        st.warning(
-            "**Overlapping preferred times** — Two or more open tasks want the same part of the day. "
-            "Adjust preferred times or durations so blocks do not overlap, or rely on **Generate schedule** "
-            "to place one task at a different time."
-        )
-        with st.container():
-            st.markdown("**What overlaps**")
-            for line in _pref_warnings:
-                st.markdown(f"- {line}")
+        st.warning("Some preferred times overlap. Adjust times or use Generate schedule to shift tasks.")
+        for line in _pref_warnings:
+            st.markdown(f"- {line}")
     else:
-        st.success(
-            "Preferred times look clear: no overlapping windows among open tasks with a preferred start."
-        )
+        st.success("No overlapping preferred times.")
 
     if not _pairs:
         st.caption("No tasks match the current filters.")
     else:
         _day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         _sort_label = {
-            "preferred_time": "Preferred start time (chronological)",
-            "urgency": "Scheduler urgency / priority (Status 'Open only' uses Scheduler.sortTasksByPriority)",
+            "preferred_time": "Preferred time",
+            "urgency": "Urgency (open tasks use scheduler order)",
             "description": "Description (A–Z)",
         }[sort_mode]
-        st.caption(f"Showing **{len(_pairs)}** row(s) · {_sort_label}")
+        st.caption(f"{len(_pairs)} row(s) · {_sort_label}")
         st.table(
             [
                 {
@@ -324,7 +286,7 @@ else:
             ]
         )
 
-    with st.expander("Mark a task complete"):
+    with st.expander("Mark task complete"):
         _mark_idx = st.selectbox(
             "Pet",
             options=list(range(len(owner.pets))),
@@ -337,7 +299,7 @@ else:
             st.caption("No open tasks for this pet.")
         else:
             _mt = st.selectbox(
-                "Open task",
+                "Task",
                 _open_on_pet,
                 format_func=lambda t: t.description,
                 key="mark_task",
@@ -347,26 +309,19 @@ else:
                 _mt.mark_complete(pet=_mp)
                 _save_owner_to_disk(owner)
                 if _freq in ("daily", "weekly"):
-                    st.success(
-                        "Daily/weekly task advanced: a **new open task** was added for the next due date "
-                        f"(`today + timedelta(days={'1' if _freq == 'daily' else '7'})`)."
-                    )
+                    st.success("Completed. Next occurrence added.")
                 else:
-                    st.success("Marked complete. Use **Status** filter to see done tasks.")
+                    st.success("Marked complete.")
                 st.rerun()
 
 st.divider()
 
-st.subheader("Build schedule")
-st.caption(
-    "Uses `Scheduler.generateOptimizedSchedule(weekday=…)` so **weekly** tasks only appear on their day; "
-    "open tasks are ordered by urgency inside the scheduler."
-)
+st.subheader("Schedule")
 
-_use_today = st.checkbox("Schedule for today’s weekday (recurring filter)", value=True, key="sched_use_today")
+_use_today = st.checkbox("Only include tasks for today's weekday", value=True, key="sched_use_today")
 _sched_weekday: int | None = date.today().weekday() if _use_today else None
 if _use_today:
-    st.caption(f"Today is **{date.today().strftime('%A')}** — only daily / as-needed / matching weekly tasks are included.")
+    st.caption(f"Today: {date.today().strftime('%A')}")
 
 if st.button("Generate schedule"):
     if not owner.get_all_tasks():
@@ -379,15 +334,11 @@ if st.button("Generate schedule"):
         plan.sort(key=lambda row: row[2])
         _plan_warn = scheduler.plan_conflict_warnings(plan)
         if _plan_warn:
-            st.warning(
-                "**Assigned times overlap** — The generated plan has two blocks at the same time. "
-                "This should be rare; note which tasks clash and adjust priorities, durations, or preferred times."
-            )
-            st.markdown("**Overlaps**")
+            st.warning("The plan has overlapping slots.")
             for line in _plan_warn:
                 st.markdown(f"- {line}")
         if not plan:
-            st.info("No tasks fit in the day window, all tasks are complete, or none apply on this weekday.")
+            st.info("Nothing to schedule in the current window, or no tasks apply today.")
         else:
             rows = []
             for pet, task, slot_start in plan:
@@ -402,9 +353,7 @@ if st.button("Generate schedule"):
                     }
                 )
             if not _plan_warn:
-                st.success(
-                    "Day plan generated with no overlapping assigned slots (07:00–22:00 window, includes buffers)."
-                )
+                st.success("Schedule generated (07:00–22:00, includes buffers).")
             else:
-                st.info("Plan below is still shown in time order; resolve overlaps using the list above.")
+                st.caption("Review overlaps above.")
             st.table(rows)

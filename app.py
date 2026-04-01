@@ -105,16 +105,6 @@ You will design and implement the scheduling logic and connect it to this Stream
 """
     )
 
-with st.expander("What you need to build", expanded=True):
-    st.markdown(
-        """
-At minimum, your system should:
-- Represent pet care tasks (what needs to happen, how long it takes, priority)
-- Represent the pet and the owner (basic info and preferences)
-- Build a plan/schedule for a day that chooses and orders tasks based on constraints
-- Explain the plan (why each task was chosen and when it happens)
-"""
-    )
 
 st.divider()
 
@@ -142,11 +132,12 @@ with pc2:
 with pc3:
     age = st.number_input("Age (years)", min_value=0, max_value=40, value=2)
 
-if st.button("Add pet"):
+if st.button("Add pet", key="add_pet_btn"):
     name = (pet_name or "").strip() or "Unnamed"
     owner.pets.append(Pet(name=name, species=species, age=int(age)))
     _save_owner_to_disk(owner)
     st.success(f"Added **{name}**.")
+    st.rerun()
 
 if owner.pets:
     st.markdown("**Your pets**")
@@ -163,11 +154,15 @@ st.caption("Appends a `Task` to the chosen pet (`Pet.tasks`), using urgency, buf
 if not owner.pets:
     st.warning("Add at least one pet before adding tasks.")
 else:
-    pet_for_task = st.selectbox(
+    # Use index, not Pet objects: Streamlit may not preserve object identity for
+    # selectbox options across reruns, so we must mutate `owner.pets[i]` directly.
+    _add_pet_idx = st.selectbox(
         "Pet for this task",
-        owner.pets,
-        format_func=lambda p: f"{p.name} ({p.species})",
+        options=list(range(len(owner.pets))),
+        format_func=lambda i: f"{owner.pets[i].name} ({owner.pets[i].species})",
+        key="add_task_pet_idx",
     )
+    pet_for_task = owner.pets[_add_pet_idx]
 
     tc1, tc2 = st.columns(2)
     with tc1:
@@ -210,7 +205,7 @@ else:
         pref_time = st.time_input("Preferred start", value=time(8, 0))
         pref_minutes = pref_time.hour * 60 + pref_time.minute
 
-    if st.button("Add task"):
+    if st.button("Add task", key="add_task_btn"):
         _due = date.today() if frequency in ("daily", "weekly") else None
         pet_for_task.tasks.append(
             Task(
@@ -225,6 +220,7 @@ else:
         )
         _save_owner_to_disk(owner)
         st.success(f"Task added for **{pet_for_task.name}**.")
+        st.rerun()
 
     st.markdown("#### Task list (filter & sort)")
     _f1, _f2, _f3 = st.columns(3)
@@ -269,10 +265,12 @@ else:
     elif sort_mode == "urgency":
         if filter_status == "open":
             _sched_ordered = _scheduler.sortTasksByPriority(reference_date=_ref_today)
+            # Intersect using object identity (dataclass `in list` can match wrong rows).
+            _allowed_pairs = {(id(p), id(t)) for p, t in _pairs_for_order}
             _pairs = [
                 (p, t)
                 for p, t in _sched_ordered
-                if (p, t) in _pairs_for_order
+                if (id(p), id(t)) in _allowed_pairs
             ]
         else:
             _pairs = sort_pairs_by_urgency(_pairs)
@@ -327,7 +325,13 @@ else:
         )
 
     with st.expander("Mark a task complete"):
-        _mp = st.selectbox("Pet", owner.pets, format_func=lambda p: p.name, key="mark_pet")
+        _mark_idx = st.selectbox(
+            "Pet",
+            options=list(range(len(owner.pets))),
+            format_func=lambda i: owner.pets[i].name,
+            key="mark_pet",
+        )
+        _mp = owner.pets[_mark_idx]
         _open_on_pet = [t for t in _mp.tasks if not t.completed]
         if not _open_on_pet:
             st.caption("No open tasks for this pet.")

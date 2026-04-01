@@ -75,7 +75,20 @@ streamlit run app.py
 ### Run tests
 
 ```bash
-pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
+## Testing PawPal+
+
+Run the automated checks from the project root:
+
+```bash
+python -m pytest
+```
+
+Use `python -m pytest tests/ -v` for verbose per-test output.
+
+The suite in `tests/test_pawpal.py` exercises core backend behavior: task completion and **daily/weekly recurrence** (including `as_needed`), **owner filtering** by pet name and status, **preferred-time sorting** (chronological order and tie-breaks), **urgency sorting**, **weekday** and **due_date** gating for the scheduler, **preferred-time and plan conflict** detection (including duplicate preferred starts and half-open “touching” intervals), **optimized schedule** generation (preferred slots, first-fit fallback, day-budget skips), and **helper** utilities such as conflict warning strings and `findAvailableSlot` with unsorted occupied intervals.
+
+**Confidence level (reliability, based on current tests):** ★★★★☆ (4/5) — domain and scheduling logic are well covered by `pytest`, but the Streamlit UI and end-to-end flows are not exercised here; add integration or UI tests to raise confidence further.
 

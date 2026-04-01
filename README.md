@@ -39,6 +39,15 @@ Your final app should:
 - **`Owner`** — Holds `Pet` list; exposes flat views of all tasks (with or without pet pairing).
 - **`Scheduler`** — Given an `Owner`, considers only incomplete tasks, sorts by urgency/priority, then assigns non-overlapping start times within a day window (default 07:00–22:00), respecting preferred times when they fit.
 
+## Smarter Scheduling
+
+PawPal+ goes beyond a simple priority list:
+
+- **Due dates** — Each task can carry a calendar `due_date`. The scheduler only considers tasks that are due on the chosen planning day (`reference_date`), so future occurrences stay off today’s plan until appropriate.
+- **Weekly rules** — For `frequency="weekly"`, optional `weekly_weekday` (Monday–Sunday) limits which calendar day a task appears on, so weekly meds or grooming only show when they apply.
+- **Preferred times and conflicts** — Preferred start (`time_minutes`) is honored when it fits the day window and does not overlap another placed block; otherwise the scheduler **first-fits** the task into the next gap. You can detect overlapping *preferences* across open tasks with `detect_preferred_time_conflicts` / `Scheduler.preferred_time_conflict_warnings`, and validate any concrete plan with `detect_plan_conflicts` / `plan_conflict_warnings`.
+- **Recurring completion** — Completing a **daily** or **weekly** task that lives on a pet’s list replaces that row with a new open task for the next due day (`today + 1 day` or `today + 7 days`), so the model stays aligned with recurring care.
+
 ## Getting started
 
 ### Setup
@@ -69,12 +78,4 @@ streamlit run app.py
 pytest tests/ -v
 ```
 
-## Suggested workflow
 
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.

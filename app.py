@@ -142,6 +142,7 @@ else:
         pref_minutes = pref_time.hour * 60 + pref_time.minute
 
     if st.button("Add task"):
+        _due = date.today() if frequency in ("daily", "weekly") else None
         pet_for_task.tasks.append(
             Task(
                 description=description,
@@ -150,6 +151,7 @@ else:
                 duration_minutes=int(duration_minutes),
                 priority=_priority_value,
                 weekly_weekday=weekly_day,
+                due_date=_due,
             )
         )
         st.success(f"Task added for **{pet_for_task.name}**.")
@@ -225,6 +227,7 @@ else:
                     "preferred": _clock(task.time_minutes)
                     if task.time_minutes is not None
                     else "—",
+                    "due_date": task.due_date.isoformat() if task.due_date is not None else "—",
                 }
                 for pet, task in _pairs
             ]
@@ -243,8 +246,15 @@ else:
                 key="mark_task",
             )
             if st.button("Mark complete", key="mark_done_btn"):
-                _mt.mark_complete()
-                st.success("Marked complete. Use **Status** filter to see done tasks.")
+                _freq = _mt.frequency.lower().strip()
+                _mt.mark_complete(pet=_mp)
+                if _freq in ("daily", "weekly"):
+                    st.success(
+                        "Daily/weekly task advanced: a **new open task** was added for the next due date "
+                        f"(`today + timedelta(days={'1' if _freq == 'daily' else '7'})`)."
+                    )
+                else:
+                    st.success("Marked complete. Use **Status** filter to see done tasks.")
                 st.rerun()
 
 st.divider()
@@ -265,7 +275,9 @@ if st.button("Generate schedule"):
         st.warning("Add at least one task first.")
     else:
         scheduler = Scheduler(owner=owner)
-        plan = scheduler.generateOptimizedSchedule(weekday=_sched_weekday)
+        plan = scheduler.generateOptimizedSchedule(
+            weekday=_sched_weekday, reference_date=date.today()
+        )
         plan.sort(key=lambda row: row[2])
         _plan_conflicts = detect_plan_conflicts(plan)
         if _plan_conflicts:

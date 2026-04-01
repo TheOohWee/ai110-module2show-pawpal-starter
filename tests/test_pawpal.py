@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from pawpal_system import (
     Owner,
     Pet,
@@ -5,6 +7,7 @@ from pawpal_system import (
     Task,
     detect_plan_conflicts,
     detect_preferred_time_conflicts,
+    format_time_range_conflict_warning,
     filter_tasks_with_pets,
     sort_pairs_by_preferred_time,
 )
@@ -40,6 +43,14 @@ def test_filter_tasks_by_pet_and_status():
     assert len(filter_tasks_with_pets(owner, status="open")) == 1
     assert len(filter_tasks_with_pets(owner, status="done")) == 1
     assert len(filter_tasks_with_pets(owner, pet=dog, status="all")) == 1
+
+
+def test_owner_filter_tasks_by_pet_name_case_insensitive():
+    dog = Pet(name="Milo", species="dog", age=1, tasks=[Task("walk", None, "daily")])
+    owner = Owner(pets=[dog])
+    assert len(owner.filter_tasks(pet_name="milo")) == 1
+    assert len(owner.filter_tasks(pet_name="MILO ")) == 1
+    assert len(owner.filter_tasks(pet_name="Nobody")) == 0
 
 
 def test_sort_pairs_by_preferred_time_orders_none_last():
@@ -85,3 +96,66 @@ def test_scheduler_weekday_filters_weekly_tasks():
     on_monday = sched.sortTasksByPriority(weekday=1)
     assert len(on_tuesday) == 1
     assert len(on_monday) == 0
+
+
+def test_daily_mark_complete_with_pet_advances_due_next_day():
+    d0 = date(2026, 3, 31)
+    pet = Pet("p", "dog", 1, [Task("walk", 8 * 60, "daily", due_date=d0)])
+    original = pet.tasks[0]
+    original.mark_complete(pet=pet, today=d0)
+    assert len(pet.tasks) == 1
+    assert pet.tasks[0] is not original
+    assert pet.tasks[0].completed is False
+    assert pet.tasks[0].due_date == d0 + timedelta(days=1)
+
+
+def test_weekly_mark_complete_with_pet_advances_due_by_one_week():
+    d0 = date(2026, 3, 30)
+    pet = Pet(
+        "p",
+        "dog",
+        1,
+        [Task("groom", None, "weekly", weekly_weekday=0, due_date=d0)],
+    )
+    pet.tasks[0].mark_complete(pet=pet, today=d0)
+    assert pet.tasks[0].due_date == d0 + timedelta(days=7)
+
+
+def test_scheduler_skips_tasks_with_future_due_date():
+    far = date(2099, 1, 1)
+    pet = Pet("p", "dog", 1, [Task("future", 8 * 60, "daily", due_date=far)])
+    sched = Scheduler(owner=Owner(pets=[pet]))
+    assert sched.sortTasksByPriority(reference_date=date.today()) == []
+
+
+def test_scheduler_preferred_time_conflict_warnings_are_non_fatal_strings():
+    dog = Pet(
+        "Milo",
+        "dog",
+        4,
+        tasks=[
+            Task("Morning walk", 8 * 60, "daily"),
+            Task("Yard break", 8 * 60, "daily"),
+        ],
+    )
+    sched = Scheduler(owner=Owner(pets=[dog]))
+    warnings = sched.preferred_time_conflict_warnings()
+    assert len(warnings) >= 1
+    assert "Morning walk" in warnings[0] and "Yard break" in warnings[0]
+
+
+def test_format_time_range_conflict_warning_includes_times():
+    from pawpal_system import TimeRangeConflict
+
+    c = TimeRangeConflict(
+        pet_a="A",
+        task_a="x",
+        start_a=8 * 60,
+        end_a=9 * 60,
+        pet_b="B",
+        task_b="y",
+        start_b=8 * 60 + 30,
+        end_b=10 * 60,
+    )
+    s = format_time_range_conflict_warning(c)
+    assert "08:00" in s and "A" in s and "B" in s

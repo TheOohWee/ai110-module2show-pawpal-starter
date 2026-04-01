@@ -3,3 +3,6 @@ __pycache__/
 .venv_new/
 .pytest_cache/
 .DS_Store
+
+# Local Streamlit app data (pets/tasks)
+pawpal_data.json

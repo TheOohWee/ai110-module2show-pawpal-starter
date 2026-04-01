@@ -1,4 +1,6 @@
+import json
 from datetime import date, time
+from pathlib import Path
 
 import streamlit as st
 from typing import cast
@@ -13,6 +15,72 @@ from pawpal_system import (
     sort_pairs_by_preferred_time,
     sort_pairs_by_urgency,
 )
+
+_DATA_FILE = Path(__file__).resolve().parent / "pawpal_data.json"
+
+
+def _task_to_json(t: Task) -> dict:
+    return {
+        "description": t.description,
+        "time_minutes": t.time_minutes,
+        "frequency": t.frequency,
+        "completed": t.completed,
+        "duration_minutes": t.duration_minutes,
+        "priority": t.priority,
+        "weekly_weekday": t.weekly_weekday,
+        "due_date": t.due_date.isoformat() if t.due_date is not None else None,
+    }
+
+
+def _task_from_json(d: dict) -> Task:
+    dd = d.get("due_date")
+    return Task(
+        description=d["description"],
+        time_minutes=d.get("time_minutes"),
+        frequency=d["frequency"],
+        completed=d.get("completed", False),
+        duration_minutes=int(d.get("duration_minutes", 30)),
+        priority=int(d.get("priority", 1)),
+        weekly_weekday=d.get("weekly_weekday"),
+        due_date=date.fromisoformat(dd) if dd else None,
+    )
+
+
+def _load_owner_from_disk() -> Owner:
+    if not _DATA_FILE.is_file():
+        return Owner()
+    try:
+        raw = json.loads(_DATA_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return Owner()
+    pets: list[Pet] = []
+    for pd in raw.get("pets", []):
+        tasks = [_task_from_json(td) for td in pd.get("tasks", [])]
+        pets.append(
+            Pet(
+                name=pd["name"],
+                species=pd["species"],
+                age=int(pd["age"]),
+                tasks=tasks,
+            )
+        )
+    return Owner(pets=pets)
+
+
+def _save_owner_to_disk(owner: Owner) -> None:
+    payload = {
+        "pets": [
+            {
+                "name": p.name,
+                "species": p.species,
+                "age": p.age,
+                "tasks": [_task_to_json(t) for t in p.tasks],
+            }
+            for p in owner.pets
+        ]
+    }
+    _DATA_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -51,9 +119,11 @@ At minimum, your system should:
 st.divider()
 
 if "owner" not in st.session_state:
-    st.session_state.owner = Owner()
+    st.session_state.owner = _load_owner_from_disk()
 
 owner = st.session_state.owner
+
+st.caption(f"Data is saved to **`{_DATA_FILE.name}`** in the project folder (reload-safe). Delete that file to reset.")
 
 
 def _clock(minutes: int) -> str:
@@ -75,6 +145,7 @@ with pc3:
 if st.button("Add pet"):
     name = (pet_name or "").strip() or "Unnamed"
     owner.pets.append(Pet(name=name, species=species, age=int(age)))
+    _save_owner_to_disk(owner)
     st.success(f"Added **{name}**.")
 
 if owner.pets:
@@ -152,6 +223,7 @@ else:
                 due_date=_due,
             )
         )
+        _save_owner_to_disk(owner)
         st.success(f"Task added for **{pet_for_task.name}**.")
 
     st.markdown("#### Task list (filter & sort)")
@@ -269,6 +341,7 @@ else:
             if st.button("Mark complete", key="mark_done_btn"):
                 _freq = _mt.frequency.lower().strip()
                 _mt.mark_complete(pet=_mp)
+                _save_owner_to_disk(owner)
                 if _freq in ("daily", "weekly"):
                     st.success(
                         "Daily/weekly task advanced: a **new open task** was added for the next due date "

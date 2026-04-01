@@ -27,8 +27,6 @@ These capabilities map directly to the algorithms and data structures in `pawpal
 
 ## 📸 Demo
 
-Click the image to open the full-size screenshot in a new tab.
-
 <a href="1.png" target="_blank"><img src='1.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
 
 ---

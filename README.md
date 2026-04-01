@@ -29,7 +29,7 @@ These capabilities map directly to the algorithms and data structures in `pawpal
 
 Click the image to open the full-size screenshot in a new tab.
 
-<a href="/course_images/ai110/your_screenshot_name.png" target="_blank"><img src='/course_images/ai110/your_screenshot_name.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+<a href="/course_images/ai110/1.png" target="_blank"><img src='/course_images/ai110/1.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
 
 ---
 
